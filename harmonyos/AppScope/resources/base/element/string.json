@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "app_name",
+      "value": "微北洋"
+    },
+    {
+      "name": "reason_read_imagevideo",
+      "value": "用于保存和读取帖子中的图片"
+    },
+    {
+      "name": "reason_write_imagevideo",
+      "value": "用于将图片保存到系统相册"
+    }
+  ]
+}

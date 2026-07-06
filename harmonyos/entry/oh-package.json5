@@ -1,0 +1,14 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "WePeiYang HarmonyOS entry",
+  "main": "",
+  "author": "",
+  "license": "",
+  "dependencies": {
+    "@ohos/flutter_module": "file:./libs/flutter_module.har",
+    "@ohos/flutter_ohos": "file:./libs/flutter_embedding_debug.har",
+    "flutter_native_arm64_v8a": "file:./libs/arm64_v8a_debug.har",
+    "photo_manager": "file:./libs/photo_manager.har"
+  }
+}

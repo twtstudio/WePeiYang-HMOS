@@ -1,0 +1,13 @@
+import 'package:flutter/material.dart';
+import 'package:wepei_module/commons/themes/template/wpy_theme_data.dart';
+
+import '../../commons/themes/wpy_theme.dart';
+
+class GPAColor {
+  static List<Color> blue(context) => [
+        WpyTheme.of(context).get(WpyColorKey.primaryActionColor),
+        WpyTheme.of(context).get(WpyColorKey.brightTextColor),
+        WpyTheme.of(context).get(WpyColorKey.primaryLightActionColor),
+        WpyTheme.of(context).get(WpyColorKey.brightTextColor),
+      ];
+}

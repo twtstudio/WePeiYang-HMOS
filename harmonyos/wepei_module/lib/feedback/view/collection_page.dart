@@ -1,0 +1,367 @@
+import 'package:flutter/material.dart'
+    hide RefreshIndicator, RefreshIndicatorState;
+import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:pull_to_refresh/pull_to_refresh.dart';
+import 'package:wepei_module/commons/util/text_util.dart';
+import 'package:wepei_module/commons/util/toast_provider.dart';
+import 'package:wepei_module/feedback/network/feedback_service.dart';
+import 'package:wepei_module/feedback/network/post.dart';
+import 'package:wepei_module/feedback/view/components/widget/refresh_header.dart';
+import 'package:wepei_module/message/model/message_provider.dart';
+
+import '../../commons/themes/template/wpy_theme_data.dart';
+import '../../commons/themes/wpy_theme.dart';
+import 'components/post_card.dart';
+
+/// Almost the same as [UserPage].
+class CollectionPage extends StatefulWidget {
+  @override
+  _CollectionPageState createState() => _CollectionPageState();
+}
+
+enum _CurrentTab {
+  myPosts,
+  myCollect,
+}
+
+class _CollectionPageState extends State<CollectionPage> {
+  ValueNotifier<_CurrentTab> _currentTab = ValueNotifier(_CurrentTab.myCollect);
+  late final PageController _tabController;
+  List<Post> _favList = [];
+  var _refreshController = RefreshController(initialRefresh: true);
+  bool tap = false;
+  int currentPage = 1;
+
+  TextEditingController _searchController = TextEditingController();
+  String _searchKeyword = "";
+
+  _getMyCollects({Function(List<Post>)? onSuccess, Function? onFail}) {
+    FeedbackService.getFavoritePosts(
+        page: currentPage,
+        page_size: 10,
+        onResult: (list) {
+          setState(() {
+            onSuccess?.call(list);
+          });
+        },
+        onFailure: (e) {
+          ToastProvider.error(e.error.toString());
+          onFail?.call();
+        });
+  }
+
+  //刷新
+  _onRefresh() {
+    FeedbackService.getUserInfo(onSuccess: () {
+      setState(() {});
+    }, onFailure: (e) {
+      ToastProvider.error(e.error.toString());
+    });
+    currentPage = 1;
+    _refreshController.resetNoData();
+    _getMyCollects(onSuccess: (list) {
+      _favList = list;
+      _refreshController.refreshCompleted();
+    }, onFail: () {
+      _refreshController.refreshFailed();
+    });
+  }
+
+  //下拉加载
+  _onLoading() {
+    currentPage++;
+    _getMyCollects(onSuccess: (list) {
+      if (list.length == 0) {
+        _refreshController.loadNoData();
+        currentPage--;
+      } else {
+        _favList.addAll(list);
+        _refreshController.loadComplete();
+      }
+    }, onFail: () {
+      currentPage--;
+      _refreshController.loadFailed();
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = PageController(
+      initialPage: 0,
+    )..addListener(() {
+        var absPosition =
+            (_tabController.page! - _currentTab.value.index).abs();
+        if (absPosition > 0.5 && !tap) {
+          _currentTab.value = _CurrentTab.values[_tabController.page!.round()];
+        }
+        _refreshController.requestRefresh();
+      });
+    _currentTab.addListener(() {
+      tap = true;
+      _tabController
+          .animateToPage(
+            1,
+            duration: Duration(milliseconds: 300),
+            curve: Curves.ease,
+          )
+          .then((value) => tap = false);
+    });
+    _getMyCollects();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _searchController.dispose();
+    _refreshController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ///拆出去单写会刷新错误..
+    ///收藏List栏，为空时显示无
+    final filteredFavList = _searchKeyword.trim().isEmpty
+        ? _favList
+        : _favList
+            .where((post) =>
+                post.title.toLowerCase().contains(_searchKeyword.toLowerCase()))
+            .toList();
+
+    var favLists = ListView.builder(
+      padding: EdgeInsets.zero,
+      physics: NeverScrollableScrollPhysics(),
+      shrinkWrap: true,
+      itemCount: filteredFavList.length,
+      itemBuilder: (context, index) {
+        return PostCardNormal(filteredFavList[index]);
+      },
+    );
+
+    var list = ExpandablePageView(
+      controller: _tabController,
+      children: [
+        AnimatedSwitcher(
+          duration: Duration(milliseconds: 300),
+          child: Builder(
+            key: ValueKey(filteredFavList.length),
+            builder: (context) {
+              if (filteredFavList.isEmpty) {
+                return Container(
+                    height: 200,
+                    alignment: Alignment.center,
+                    child: Text(_searchKeyword.isEmpty ? "暂无收藏" : "没有匹配的收藏",
+                        style: TextUtil.base.oldThirdAction(context)));
+              } else {
+                return Column(
+                  children: [favLists, SizedBox(height: 20.w)],
+                );
+              }
+            },
+          ),
+        )
+      ],
+    );
+
+    Widget body = CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.w),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: WpyTheme.of(context)
+                    .get(WpyColorKey.primaryBackgroundColor),
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.w),
+                hintText: "搜索收藏帖子",
+                prefixIcon: Icon(Icons.search),
+                suffixIcon: _searchKeyword.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _searchKeyword = "";
+                          });
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20.w),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _searchKeyword = value;
+                });
+              },
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Container(
+              color: WpyTheme.of(context)
+                  .get(WpyColorKey.secondaryBackgroundColor),
+              child: list),
+        )
+      ],
+    );
+
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor:
+            WpyTheme.of(context).get(WpyColorKey.secondaryBackgroundColor),
+        leading: IconButton(
+          icon: Icon(
+            Icons.arrow_back_ios_rounded,
+            color: WpyTheme.of(context).get(WpyColorKey.labelTextColor),
+            size: 20.w,
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          "我的收藏",
+          style: TextUtil.base.NotoSansSC.label(context).w600.sp(18),
+        ),
+        centerTitle: true,
+      ),
+      body: Container(
+        //改背景色用
+        color: WpyTheme.of(context).get(WpyColorKey.secondaryBackgroundColor),
+        child: SmartRefresher(
+          physics: BouncingScrollPhysics(),
+          controller: _refreshController,
+          header: RefreshHeader(context),
+          footer: ClassicFooter(
+            idleText: '没有更多数据了:>',
+            idleIcon: Icon(Icons.check),
+          ),
+          enablePullDown: true,
+          onRefresh: _onRefresh,
+          enablePullUp: true,
+          onLoading: _onLoading,
+          child: body,
+        ),
+      ),
+    );
+  }
+}
+
+class ExpandablePageView extends StatefulWidget {
+  final List<Widget> children;
+  final PageController controller;
+
+  const ExpandablePageView({
+    Key? key,
+    required this.children,
+    required this.controller,
+  }) : super(key: key);
+
+  @override
+  _ExpandablePageViewState createState() => _ExpandablePageViewState();
+}
+
+class _ExpandablePageViewState extends State<ExpandablePageView>
+    with TickerProviderStateMixin {
+  late final PageController _pageController;
+  late final List<double> _heights;
+  int _currentPage = 0;
+
+  double get _currentHeight => _heights[_currentPage];
+
+  @override
+  void initState() {
+    _heights = widget.children.map((e) => 0.0).toList();
+    super.initState();
+    _pageController = widget.controller
+      ..addListener(() {
+        final _newPage = _pageController.page!.round();
+        if (_currentPage != _newPage) {
+          setState(() => _currentPage = _newPage);
+        }
+      });
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      curve: Curves.easeInOutCubic,
+      duration: const Duration(milliseconds: 100),
+      tween: Tween<double>(begin: _heights[0], end: _currentHeight),
+      builder: (context, value, child) => SizedBox(height: value, child: child),
+      child: PageView(
+        controller: _pageController,
+        children: _sizeReportingChildren,
+      ),
+    );
+  }
+
+  List<Widget> get _sizeReportingChildren => widget.children
+      .asMap()
+      .map(
+        (index, child) => MapEntry(
+          index,
+          OverflowBox(
+            minHeight: 0,
+            maxHeight: double.infinity,
+            alignment: Alignment.topCenter,
+            child: SizeReportingWidget(
+              onSizeChange: (size) =>
+                  setState(() => _heights[index] = size.height),
+              child: child,
+            ),
+          ),
+        ),
+      )
+      .values
+      .toList();
+}
+
+class SizeReportingWidget extends StatefulWidget {
+  final Widget child;
+  final ValueChanged<Size> onSizeChange;
+
+  const SizeReportingWidget({
+    Key? key,
+    required this.child,
+    required this.onSizeChange,
+  }) : super(key: key);
+
+  @override
+  _SizeReportingWidgetState createState() => _SizeReportingWidgetState();
+}
+
+class _SizeReportingWidgetState extends State<SizeReportingWidget>
+    with AutomaticKeepAliveClientMixin {
+  Size? _oldSize;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _notifySize());
+    return widget.child;
+  }
+
+  void _notifySize() {
+    final size = context.size;
+    if (_oldSize != size) {
+      _oldSize = size;
+      widget.onSizeChange(size!);
+    }
+  }
+
+  @override
+  bool get wantKeepAlive => true;
+}
